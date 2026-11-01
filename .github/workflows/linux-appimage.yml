@@ -22,7 +22,6 @@ jobs:
     env:
       DEBIAN_FRONTEND: noninteractive
       CMAKE_GENERATOR: Ninja
-      PATH: /usr/lib/qt6/bin:${PATH}
 
     steps:
       - name: Checkout repository
@@ -61,6 +60,11 @@ jobs:
             ca-certificates \
             file \
             desktop-file-utils
+
+      - name: Add Qt to PATH
+        shell: bash
+        run: |
+          echo "/usr/lib/qt6/bin" >> "$GITHUB_PATH"
 
       - name: Download AppImage tooling
         shell: bash
