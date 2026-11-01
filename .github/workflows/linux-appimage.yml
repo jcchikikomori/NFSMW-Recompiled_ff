@@ -32,13 +32,23 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends wget gpg ca-certificates
+
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | \
+            sudo gpg --dearmor -o /usr/share/keyrings/llvm-archive-keyring.gpg
+
+          echo "deb [signed-by=/usr/share/keyrings/llvm-archive-keyring.gpg] http://apt.llvm.org/noble/ llvm-toolchain-noble-20 main" | \
+            sudo tee /etc/apt/sources.list.d/llvm-toolchain-noble-20.list
+
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential \
             cmake \
             ninja-build \
             clang-20 \
-            lld \
+            lld-20 \
             pkg-config \
             qt6-base-dev \
             qt6-base-dev-tools \
