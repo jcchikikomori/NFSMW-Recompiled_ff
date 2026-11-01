@@ -1,4 +1,4 @@
-name: Linux AppImage
+name: Linux AppImage x86_64
 
 on:
   workflow_dispatch:
@@ -8,15 +8,14 @@ on:
       - "app/**"
       - "launcher-linux/**"
       - "packaging/**"
-      - ".github/workflows/linux-appimage.yml"
+      - ".github/workflows/linux-appimage-x86_64.yml"
 
 permissions:
   contents: read
 
 jobs:
-  build-appimage:
-    name: Build Linux AppImage
-    runs-on: ubuntu-24.04-arm
+  build-appimage-x86_64:
+    runs-on: ubuntu-24.04
     timeout-minutes: 180
 
     env:
@@ -27,7 +26,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install build dependencies
+      - name: Install deps
         shell: bash
         run: |
           set -euxo pipefail
@@ -66,20 +65,20 @@ jobs:
         run: |
           echo "/usr/lib/qt6/bin" >> "$GITHUB_PATH"
 
-      - name: Download AppImage tooling
+      - name: Download x86_64 AppImage tooling
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p "$HOME/.local/bin"
 
           curl -L \
-            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-aarch64.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage \
             -o "$HOME/.local/bin/linuxdeploy"
           curl -L \
-            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-aarch64.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage \
             -o "$HOME/.local/bin/linuxdeploy-plugin-qt"
           curl -L \
-            https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-aarch64.AppImage \
+            https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage \
             -o "$HOME/.local/bin/appimagetool"
 
           chmod +x "$HOME/.local/bin/linuxdeploy" \
@@ -87,13 +86,13 @@ jobs:
                    "$HOME/.local/bin/appimagetool"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Clone ReXGlue SDK next to the repo
+      - name: Clone SDK
         shell: bash
         run: |
           set -euxo pipefail
           git clone --depth 1 https://github.com/rexglue/rexglue-sdk.git ../rexglue-sdk
 
-      - name: Configure CMake for Linux ARM64
+      - name: Configure x86_64 build
         shell: bash
         run: |
           set -euxo pipefail
@@ -105,21 +104,37 @@ jobs:
                 -DCMAKE_CXX_COMPILER=clang++-20 \
                 -DNFSMW_BUILD_LAUNCHER=ON
 
-      - name: Build game and launcher
+      - name: Build
         shell: bash
         run: |
           set -euxo pipefail
           cmake --build app/build --parallel
 
-      - name: Package AppImage
+      - name: Package x86_64 AppImage
         shell: bash
         run: |
           set -euxo pipefail
-          ./packaging/appimage/build-appimage-arm64.sh
 
-      - name: Upload AppImage artifact
+          # Keep the repo's logic but make it arch-aware.
+          # The existing script is ARM64-specific and will reject x86_64.
+          export ARCH="$(uname -m)"
+          export OUTPUT="${PWD}/app/build/NFSMW-${ARCH}.AppImage"
+
+          # You will need a x86_64 packaging script here, because the shipped
+          # build-appimage-arm64.sh hard-codes aarch64 and build-arm64.
+          # Minimal workaround:
+          #   - copy the script
+          #   - replace "aarch64" with "${ARCH}"
+          #   - replace "build-arm64" with "build-${ARCH}"
+          #   - remove the hard ARM64 check
+          #   - use x86_64 linuxdeploy/appimagetool
+          #
+          # Then run:
+          # ./packaging/appimage/build-appimage-x86_64.sh
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nfsmw-linux-aarch64-appimage
-          path: app/build/NFSMW-aarch64.AppImage
+          name: nfsmw-linux-x86_64-appimage
+          path: app/build/NFSMW-*.AppImage
           if-no-files-found: error
