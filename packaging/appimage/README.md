@@ -40,6 +40,29 @@ Artifact: `app/build/NFSMW-aarch64.AppImage`.
 Override `NFSMW_BIN`, `LAUNCHER_BIN`, `RUNTIME_LIB`, `GPU_LIB` or
 `EXTRACT_XISO_BIN` if the artifacts are in other locations.
 
+## GitHub Actions (CI)
+
+The workflow `.github/workflows/linux-appimage.yml` builds a **launcher-only**
+x86_64 AppImage on `ubuntu-24.04`:
+
+```bash
+cmake -S app -B app/build -DNFSMW_BUILD_GAME=OFF -DNFSMW_BUILD_LAUNCHER=ON
+cmake --build app/build --target nfsmw_launcher
+packaging/appimage/build-appimage-launcher.sh
+```
+
+Artifact: `app/build/NFSMW-Launcher-x86_64.AppImage`. It contains the Qt 6
+launcher, the Qt runtime, `extract-xiso`, the desktop file and the icon.
+`NFSMW_BUILD_GAME=OFF` skips the `generated/rexglue.cmake` include, the game
+target and the `rexglue_setup_target` call, so no ReXGlue SDK is needed.
+
+The full game AppImage (`build-appimage-arm64.sh`) needs the recompiled game
+executable. That executable embeds the translated game code, which the ReXGlue
+codegen can only produce from the copyrighted Xbox 360 XEX, so it cannot be
+built in public CI. The launcher AppImage therefore ships without the game
+binary; build it locally with the game enabled (the default) as described
+above.
+
 ## Runtime
 
 On first launch, choose a writable root folder. The launcher creates:

@@ -8,19 +8,30 @@ on:
       - "app/**"
       - "launcher-linux/**"
       - "packaging/**"
-      - ".github/workflows/linux-appimage-x86_64.yml"
+      - ".github/workflows/linux-appimage.yml"
 
 permissions:
   contents: read
 
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: true
+
 jobs:
-  build-appimage-x86_64:
+  # Only the Qt launcher is packaged. The recompiled game executable embeds the
+  # translated game code, which the ReXGlue codegen produces from the
+  # copyrighted XEX, so it cannot be built in public CI.
+  launcher-appimage:
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 60
 
     env:
       DEBIAN_FRONTEND: noninteractive
       CMAKE_GENERATOR: Ninja
+      # GitHub runners have no FUSE, so AppImages must be extracted to run.
+      APPIMAGE_EXTRACT_AND_RUN: "1"
+      # linuxdeploy-plugin-qt prefers a plain "qmake"; point it at Qt 6.
+      QMAKE: /usr/lib/qt6/bin/qmake6
 
     steps:
       - name: Checkout repository
@@ -32,7 +43,10 @@ jobs:
           set -euxo pipefail
 
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends wget gpg ca-certificates
+          sudo apt-get install -y --no-install-recommends \
+            wget gpg ca-certificates git curl file desktop-file-utils \
+            build-essential cmake ninja-build pkg-config zlib1g-dev \
+            qt6-base-dev qt6-base-dev-tools
 
           wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | \
             sudo gpg --dearmor -o /usr/share/keyrings/llvm-archive-keyring.gpg
@@ -41,29 +55,31 @@ jobs:
             sudo tee /etc/apt/sources.list.d/llvm-toolchain-noble-20.list
 
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            cmake \
-            ninja-build \
-            clang-20 \
-            lld-20 \
-            pkg-config \
-            qt6-base-dev \
-            qt6-base-dev-tools \
-            qt6-tools-dev \
-            qt6-svg-dev \
-            libgl1-mesa-dev \
-            libvulkan-dev \
-            git \
-            curl \
-            ca-certificates \
-            file \
-            desktop-file-utils
+          sudo apt-get install -y --no-install-recommends clang-20 lld-20
 
       - name: Add Qt to PATH
         shell: bash
         run: |
           echo "/usr/lib/qt6/bin" >> "$GITHUB_PATH"
+
+      - name: Configure launcher
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S app \
+                -B app/build \
+                -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_C_COMPILER=clang-20 \
+                -DCMAKE_CXX_COMPILER=clang++-20 \
+                -DNFSMW_BUILD_GAME=OFF \
+                -DNFSMW_BUILD_LAUNCHER=ON
+
+      - name: Build launcher
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build app/build --parallel --target nfsmw_launcher
 
       - name: Download x86_64 AppImage tooling
         shell: bash
@@ -78,7 +94,7 @@ jobs:
             https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage \
             -o "$HOME/.local/bin/linuxdeploy-plugin-qt"
           curl -L \
-            https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
             -o "$HOME/.local/bin/appimagetool"
 
           chmod +x "$HOME/.local/bin/linuxdeploy" \
@@ -86,13 +102,76 @@ jobs:
                    "$HOME/.local/bin/appimagetool"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      - name: Clone SDK
+      - name: Package launcher AppImage
+        shell: bash
+        env:
+          OUTPUT: ${{ github.workspace }}/app/build/NFSMW-Launcher-x86_64.AppImage
+        run: |
+          set -euxo pipefail
+          ./packaging/appimage/build-appimage-launcher.sh
+
+      - name: Verify AppImage contents
         shell: bash
         run: |
           set -euxo pipefail
-          git clone --depth 1 https://github.com/rexglue/rexglue-sdk.git ../rexglue-sdk
 
-      - name: Configure x86_64 build
+          desktop-file-validate app/build/AppDir/usr/share/applications/nfsmw.desktop
+
+          # --appimage-extract does not need FUSE.
+          cd "$(mktemp -d)"
+          "$GITHUB_WORKSPACE/app/build/NFSMW-Launcher-x86_64.AppImage" --appimage-extract
+
+          for path in \
+            squashfs-root/usr/bin/nfsmw_launcher \
+            squashfs-root/usr/libexec/extract-xiso \
+            squashfs-root/usr/share/applications/nfsmw.desktop; do
+            if [[ ! -e "$path" ]]; then
+              echo "Missing from AppImage: $path" >&2
+              exit 1
+            fi
+          done
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nfsmw-launcher-x86_64-appimage
+          path: app/build/NFSMW-Launcher-*.AppImage
+          if-no-files-found: error
+
+  launcher-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      CMAKE_GENERATOR: Ninja
+      QT_QPA_PLATFORM: offscreen
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install deps
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            wget gpg ca-certificates git curl \
+            build-essential cmake ninja-build pkg-config zlib1g-dev \
+            qt6-base-dev qt6-base-dev-tools
+
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | \
+            sudo gpg --dearmor -o /usr/share/keyrings/llvm-archive-keyring.gpg
+
+          echo "deb [signed-by=/usr/share/keyrings/llvm-archive-keyring.gpg] http://apt.llvm.org/noble/ llvm-toolchain-noble-20 main" | \
+            sudo tee /etc/apt/sources.list.d/llvm-toolchain-noble-20.list
+
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang-20 lld-20
+
+      - name: Configure launcher tests
         shell: bash
         run: |
           set -euxo pipefail
@@ -102,39 +181,18 @@ jobs:
                 -DCMAKE_BUILD_TYPE=Release \
                 -DCMAKE_C_COMPILER=clang-20 \
                 -DCMAKE_CXX_COMPILER=clang++-20 \
-                -DNFSMW_BUILD_LAUNCHER=ON
+                -DNFSMW_BUILD_GAME=OFF \
+                -DNFSMW_BUILD_LAUNCHER=ON \
+                -DNFSMW_LAUNCHER_BUILD_TESTS=ON
 
-      - name: Build
+      - name: Build launcher tests
         shell: bash
         run: |
           set -euxo pipefail
-          cmake --build app/build --parallel
+          cmake --build app/build --parallel --target nfsmw_launcher_config_test
 
-      - name: Package x86_64 AppImage
+      - name: Run launcher tests
         shell: bash
         run: |
           set -euxo pipefail
-
-          # Keep the repo's logic but make it arch-aware.
-          # The existing script is ARM64-specific and will reject x86_64.
-          export ARCH="$(uname -m)"
-          export OUTPUT="${PWD}/app/build/NFSMW-${ARCH}.AppImage"
-
-          # You will need a x86_64 packaging script here, because the shipped
-          # build-appimage-arm64.sh hard-codes aarch64 and build-arm64.
-          # Minimal workaround:
-          #   - copy the script
-          #   - replace "aarch64" with "${ARCH}"
-          #   - replace "build-arm64" with "build-${ARCH}"
-          #   - remove the hard ARM64 check
-          #   - use x86_64 linuxdeploy/appimagetool
-          #
-          # Then run:
-          # ./packaging/appimage/build-appimage-x86_64.sh
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: nfsmw-linux-x86_64-appimage
-          path: app/build/NFSMW-*.AppImage
-          if-no-files-found: error
+          ctest --test-dir app/build --output-on-failure
