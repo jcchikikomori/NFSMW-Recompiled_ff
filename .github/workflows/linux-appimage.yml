@@ -1,0 +1,111 @@
+name: Linux AppImage
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "launcher-linux/**"
+      - "packaging/**"
+      - ".github/workflows/linux-appimage.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-appimage:
+    name: Build Linux AppImage
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      CMAKE_GENERATOR: Ninja
+      PATH: /usr/lib/qt6/bin:${PATH}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            clang-20 \
+            lld \
+            pkg-config \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            qt6-tools-dev \
+            qt6-svg-dev \
+            libgl1-mesa-dev \
+            libvulkan-dev \
+            git \
+            curl \
+            ca-certificates \
+            file \
+            desktop-file-utils
+
+      - name: Download AppImage tooling
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p "$HOME/.local/bin"
+
+          curl -L \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-aarch64.AppImage \
+            -o "$HOME/.local/bin/linuxdeploy"
+          curl -L \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-aarch64.AppImage \
+            -o "$HOME/.local/bin/linuxdeploy-plugin-qt"
+          curl -L \
+            https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-aarch64.AppImage \
+            -o "$HOME/.local/bin/appimagetool"
+
+          chmod +x "$HOME/.local/bin/linuxdeploy" \
+                   "$HOME/.local/bin/linuxdeploy-plugin-qt" \
+                   "$HOME/.local/bin/appimagetool"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Clone ReXGlue SDK next to the repo
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --depth 1 https://github.com/rexglue/rexglue-sdk.git ../rexglue-sdk
+
+      - name: Configure CMake for Linux ARM64
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake -S app \
+                -B app/build \
+                -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCMAKE_C_COMPILER=clang-20 \
+                -DCMAKE_CXX_COMPILER=clang++-20 \
+                -DNFSMW_BUILD_LAUNCHER=ON
+
+      - name: Build game and launcher
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build app/build --parallel
+
+      - name: Package AppImage
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ./packaging/appimage/build-appimage-arm64.sh
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nfsmw-linux-aarch64-appimage
+          path: app/build/NFSMW-aarch64.AppImage
+          if-no-files-found: error
