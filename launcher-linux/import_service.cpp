@@ -176,7 +176,7 @@ ImportResult ImportService::extractIso(const QString& isoPath,
   }
   if (extractor.isEmpty()) {
     return failure(QStringLiteral(
-        "extract-xiso was not found for Linux ARM64."));
+        "extract-xiso was not found for Linux."));
   }
   const QString parent = QFileInfo(QDir(gameRoot).absolutePath()).absolutePath();
   if (!QDir().mkpath(parent)) {

@@ -1,8 +1,13 @@
-# NFS Most Wanted ARM64 AppImage
+# NFS Most Wanted AppImage (Linux)
 
-The AppImage contains the native launcher, recompiled game executable,
-ReXGlue runtime/GPU libraries, Qt 6 and an ARM64 `extract-xiso`. It never
-contains copyrighted game files.
+This folder holds two packages. The full game AppImage (built by the ARM64
+script `build-appimage-arm64.sh`) contains the native launcher, recompiled game
+executable, ReXGlue runtime/GPU libraries, Qt 6 and an ARM64 `extract-xiso`; it
+needs the recompiled game executable. The launcher-only AppImage (built by
+`build-appimage-launcher.sh` for any architecture, and what CI builds) contains
+just the launcher and its runtime.
+
+Neither package contains copyrighted game files.
 
 ## Build dependencies
 

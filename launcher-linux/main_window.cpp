@@ -54,7 +54,8 @@ QGroupBox* group(const QString& title, QLayout* layout) {
 }  // namespace
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
-  setWindowTitle(QStringLiteral("NFS Most Wanted — ARM64"));
+  setWindowTitle(QStringLiteral("NFS Most Wanted — Linux (%1)")
+                     .arg(QStringLiteral(NFSMW_LAUNCHER_ARCH)));
   resize(920, 650);
   setMinimumSize(760, 560);
 
@@ -170,7 +171,9 @@ QWidget* MainWindow::createPlayPage() {
   layout->addLayout(actions);
 
   auto* version =
-      new QLabel(tr("Launcher ARM64 %1").arg(QStringLiteral(NFSMW_LAUNCHER_VERSION)));
+      new QLabel(tr("Launcher %1 (%2)")
+                     .arg(QStringLiteral(NFSMW_LAUNCHER_VERSION),
+                          QStringLiteral(NFSMW_LAUNCHER_ARCH)));
   version->setAlignment(Qt::AlignRight);
   layout->addWidget(version);
   return page;
@@ -215,8 +218,8 @@ QWidget* MainWindow::createGraphicsPage() {
 
   auto* note = new QLabel(tr(
       "The Vulkan FBO backend and disabled sparse memory are applied "
-      "automatically for ARM64/Turnip. The Xenos GPU plugin is always "
-      "loaded."));
+      "automatically (tuned for Turnip on ARM64). The Xenos GPU plugin is "
+      "always loaded."));
   note->setWordWrap(true);
   outer->addWidget(note);
   outer->addStretch();
@@ -267,8 +270,8 @@ QWidget* MainWindow::createAudioPage() {
   outer->addWidget(group(tr("Output"), form));
 
   auto* note = new QLabel(tr(
-      "Disabling the XMA worker serializes decoding. That is the "
-      "recommended value for this ARM64 build."));
+      "Disabling the XMA worker serializes decoding, which is the "
+      "recommended value on ARM64."));
   note->setWordWrap(true);
   outer->addWidget(note);
   outer->addStretch();

@@ -22,8 +22,14 @@ target_compile_definitions(nfsmw_launcher PRIVATE
 )
 
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|arm64|ARM64")
+    set(NFSMW_LAUNCHER_ARCH "aarch64")
     target_compile_options(nfsmw_launcher PRIVATE -march=armv8.4-a)
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
+    set(NFSMW_LAUNCHER_ARCH "x86_64")
+else()
+    set(NFSMW_LAUNCHER_ARCH "${CMAKE_SYSTEM_PROCESSOR}")
 endif()
+target_compile_definitions(nfsmw_launcher PRIVATE NFSMW_LAUNCHER_ARCH="${NFSMW_LAUNCHER_ARCH}")
 
 include(GNUInstallDirs)
 install(TARGETS nfsmw_launcher
